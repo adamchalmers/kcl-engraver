@@ -1,6 +1,6 @@
 use std::error::Error;
 use std::fs::File;
-use std::io::{self, Read};
+use std::io::{self, BufWriter, Read, Write};
 use std::path::Path;
 
 use clap::Parser;
@@ -18,7 +18,14 @@ fn run() -> Result<(), Box<dyn Error>> {
     let args = parse_args();
     let input = load_input_image(&args.input)?;
     let output = engrave(input, args.resolution);
-    write_output_image(&output, &args.output)?;
+
+    let kcl_output = args.kcl || args.output.ends_with(".kcl");
+    if kcl_output {
+        let coords = extract_black_block_coords(&output, args.resolution);
+        write_kcl_output(&coords, &args.output)?;
+    } else {
+        write_output_image(&output, &args.output)?;
+    }
     Ok(())
 }
 
@@ -34,6 +41,9 @@ struct Args {
     /// Block size in pixels (must be >= 1).
     #[arg(short, long, value_name = "N", value_parser = clap::value_parser!(u32).range(1..))]
     resolution: u32,
+    /// Emit KCL coordinate output even when OUTPUT is '-'.
+    #[arg(long)]
+    kcl: bool,
 }
 
 fn parse_args() -> Args {
@@ -65,6 +75,52 @@ fn write_output_image(image: &GrayImage, output: &str) -> Result<(), Box<dyn Err
         encoder.write_image(image.as_raw(), width, height, ColorType::L8.into())?;
     }
     Ok(())
+}
+
+fn write_kcl_output(coords: &[(u32, u32)], output: &str) -> Result<(), Box<dyn Error>> {
+    if output == "-" {
+        let mut stdout = io::stdout().lock();
+        write_kcl_coords(&mut stdout, coords)?;
+    } else {
+        let file = File::create(Path::new(output))?;
+        let mut writer = BufWriter::new(file);
+        write_kcl_coords(&mut writer, coords)?;
+    }
+    Ok(())
+}
+
+const PREAMBLE: &str = "
+fn block(x, y) {
+    return startSketchOn(XY)
+    |> rectangle(width = 1, height = 1, corner = [x, y])
+    |> extrude(length = 1)
+}
+";
+
+fn write_kcl_coords<W: Write>(writer: &mut W, coords: &[(u32, u32)]) -> io::Result<()> {
+    writeln!(writer, "{}", PREAMBLE)?;
+    for (x, y) in coords {
+        writeln!(writer, "block(x = {x}, y = {y})")?;
+    }
+    Ok(())
+}
+
+fn extract_black_block_coords(image: &GrayImage, resolution: u32) -> Vec<(u32, u32)> {
+    let (width, height) = image.dimensions();
+    let grid_width = width.div_ceil(resolution);
+    let grid_height = height.div_ceil(resolution);
+
+    let mut coords = Vec::new();
+    for gy in 0..grid_height {
+        for gx in 0..grid_width {
+            let x = gx * resolution;
+            let y = gy * resolution;
+            if image.get_pixel(x, y).0[0] == 0 {
+                coords.push((gx, gy));
+            }
+        }
+    }
+    coords
 }
 
 fn engrave(input: DynamicImage, resolution: u32) -> GrayImage {
@@ -192,5 +248,23 @@ mod tests {
         for p in out.pixels() {
             assert!(p.0[0] == 0 || p.0[0] == 255);
         }
+    }
+
+    #[test]
+    fn extracts_black_block_coords_from_grid_pixels() {
+        let mut image = GrayImage::from_pixel(4, 4, image::Luma([255]));
+        for y in 0..2 {
+            for x in 0..2 {
+                image.get_pixel_mut(x, y).0[0] = 0;
+            }
+        }
+        for y in 2..4 {
+            for x in 2..4 {
+                image.get_pixel_mut(x, y).0[0] = 0;
+            }
+        }
+
+        let coords = extract_black_block_coords(&image, 2);
+        assert_eq!(coords, vec![(0, 0), (1, 1)]);
     }
 }
