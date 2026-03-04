@@ -1,4 +1,3 @@
-use std::error::Error;
 use std::fs::File;
 use std::io::{self, BufWriter, Read, Write};
 use std::path::Path;
@@ -14,7 +13,7 @@ fn main() {
     }
 }
 
-fn run() -> Result<(), Box<dyn Error>> {
+fn run() -> anyhow::Result<()> {
     let args = parse_args();
     let input = load_input_image(&args.input)?;
     let output = engrave(input, args.resolution);
@@ -22,6 +21,9 @@ fn run() -> Result<(), Box<dyn Error>> {
     let kcl_output = args.kcl || args.output.ends_with(".kcl");
     if kcl_output {
         let coords = extract_black_block_coords(&output, args.resolution);
+        if coords.is_empty() {
+            anyhow::bail!("Empty image");
+        }
         write_kcl_output(&coords, &args.output)?;
     } else {
         write_output_image(&output, &args.output)?;
@@ -50,12 +52,12 @@ fn parse_args() -> Args {
     Args::parse()
 }
 
-fn load_input_image(input: &str) -> Result<DynamicImage, Box<dyn Error>> {
+fn load_input_image(input: &str) -> Result<DynamicImage, anyhow::Error> {
     if input == "-" {
         let mut bytes = Vec::new();
         io::stdin().read_to_end(&mut bytes)?;
         if bytes.is_empty() {
-            return Err("stdin was empty".into());
+            anyhow::bail!("stdin was empty");
         }
         Ok(image::load_from_memory(&bytes)?)
     } else {
@@ -63,7 +65,7 @@ fn load_input_image(input: &str) -> Result<DynamicImage, Box<dyn Error>> {
     }
 }
 
-fn write_output_image(image: &GrayImage, output: &str) -> Result<(), Box<dyn Error>> {
+fn write_output_image(image: &GrayImage, output: &str) -> Result<(), anyhow::Error> {
     let (width, height) = image.dimensions();
     if output == "-" {
         let mut stdout = io::stdout().lock();
@@ -77,7 +79,7 @@ fn write_output_image(image: &GrayImage, output: &str) -> Result<(), Box<dyn Err
     Ok(())
 }
 
-fn write_kcl_output(coords: &[(u32, u32)], output: &str) -> Result<(), Box<dyn Error>> {
+fn write_kcl_output(coords: &[(u32, u32)], output: &str) -> Result<(), anyhow::Error> {
     if output == "-" {
         let mut stdout = io::stdout().lock();
         write_kcl_coords(&mut stdout, coords)?;
@@ -90,10 +92,6 @@ fn write_kcl_output(coords: &[(u32, u32)], output: &str) -> Result<(), Box<dyn E
 }
 
 fn write_kcl_coords<W: Write>(writer: &mut W, coords: &[(u32, u32)]) -> io::Result<()> {
-    if coords.is_empty() {
-        eprintln!("Empty image");
-        std::process::exit(1);
-    }
     let width = coords.iter().map(|p| p.0).max().unwrap() as usize + 1;
     let height = coords.iter().map(|p| p.1).max().unwrap() as usize + 1;
     // Flat 1D array in row-major order, where row 0 is laid out column-by-column,
