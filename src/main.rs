@@ -90,32 +90,43 @@ fn write_kcl_output(coords: &[(u32, u32)], output: &str) -> Result<(), Box<dyn E
 }
 
 fn write_kcl_coords<W: Write>(writer: &mut W, coords: &[(u32, u32)]) -> io::Result<()> {
-    let width = coords.iter().map(|p| p.0).max().unwrap();
-    let len = coords.len();
+    if coords.is_empty() {
+        eprintln!("Empty image");
+        std::process::exit(1);
+    }
+    let width = coords.iter().map(|p| p.0).max().unwrap() as usize + 1;
+    let height = coords.iter().map(|p| p.1).max().unwrap() as usize + 1;
+    // Flat 1D array in row-major order, where row 0 is laid out column-by-column,
+    // then row 1, then row 2, etc.
+    let mut is_pixel = vec![false; width * height];
+    for (x, y) in coords {
+        is_pixel[((*y as usize) * width) + (*x as usize)] = true;
+    }
     let mut pixels = String::new();
-    for (i, (x, y)) in coords.iter().enumerate() {
-        let j = i + 1;
-        pixels.push_str(&format!(
-            "  data{j} = data{i} | (row == {x} & col == {y})\n"
-        ));
+    for is_pix in is_pixel {
+        if is_pix {
+            pixels.push_str("true, ");
+        } else {
+            pixels.push_str("false, ");
+        }
     }
     writeln!(
         writer,
         "n = {width}
+m = {height}
 width = 10
 gap = 1.5 * width
+data = [{pixels}]
 
 // Transform function
 fn chessboard(@i) {{
   row = rem(i, divisor = n)
   col = floor(i / n)
-  data0 = false
-{pixels}
 
   return [
     {{
       translate = [row * gap, col * gap, 0],
-      replicate = data{len}
+      replicate = data[i]
     }}
   ]
 }}
@@ -124,7 +135,7 @@ startSketchOn(XY)
   |> polygon(numSides = 4, radius = width, center = [0, 0])
   |> extrude(length = 2)
   |> rotate(yaw = 45)
-  |> patternTransform(instances = n * n, transform = chessboard)
+  |> patternTransform(instances = n * m, transform = chessboard)
 
 "
     )?;
