@@ -98,7 +98,9 @@ fn write_kcl_coords<W: Write>(writer: &mut W, coords: &[(u32, u32)]) -> io::Resu
     // then row 1, then row 2, etc.
     let mut is_pixel = vec![false; width * height];
     for (x, y) in coords {
-        is_pixel[((*y as usize) * width) + (*x as usize)] = true;
+        // Without this, the image is flipped around the Y axis.
+        let flipped_y = (height - 1) - (*y as usize);
+        is_pixel[(flipped_y * width) + (*x as usize)] = true;
     }
     let mut pixels = String::new();
     for is_pix in is_pixel {
@@ -129,7 +131,7 @@ fn chessboard(@i) {{
   ]
 }}
 
-startSketchOn(XY)
+blocks = startSketchOn(XY)
   |> polygon(numSides = 4, radius = width, center = [0, 0])
   |> extrude(length = 2)
   |> rotate(yaw = 45)
