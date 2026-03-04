@@ -91,9 +91,13 @@ fn write_kcl_output(coords: &[(u32, u32)], output: &str) -> Result<(), Box<dyn E
 
 fn write_kcl_coords<W: Write>(writer: &mut W, coords: &[(u32, u32)]) -> io::Result<()> {
     let width = coords.iter().map(|p| p.0).max().unwrap();
+    let len = coords.len();
     let mut pixels = String::new();
-    for (x, y) in coords {
-        pixels.push_str(&format!("| (row == {x} & col == {y})"));
+    for (i, (x, y)) in coords.iter().enumerate() {
+        let j = i + 1;
+        pixels.push_str(&format!(
+            "  data{j} = data{i} | (row == {x} & col == {y})\n"
+        ));
     }
     writeln!(
         writer,
@@ -105,13 +109,13 @@ gap = 1.5 * width
 fn chessboard(@i) {{
   row = rem(i, divisor = n)
   col = floor(i / n)
-  inImageData = false
-  {pixels}
+  data0 = false
+{pixels}
 
   return [
     {{
       translate = [row * gap, col * gap, 0],
-      replicate = inImageData
+      replicate = data{len}
     }}
   ]
 }}
