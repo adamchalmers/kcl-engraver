@@ -89,19 +89,41 @@ fn write_kcl_output(coords: &[(u32, u32)], output: &str) -> Result<(), Box<dyn E
     Ok(())
 }
 
-const PREAMBLE: &str = "
-fn block(x, y) {
-    return startSketchOn(XY)
-    |> rectangle(width = 1, height = 1, corner = [x, y])
-    |> extrude(length = 1)
-}
-";
-
 fn write_kcl_coords<W: Write>(writer: &mut W, coords: &[(u32, u32)]) -> io::Result<()> {
-    writeln!(writer, "{}", PREAMBLE)?;
+    let width = coords.iter().map(|p| p.0).max().unwrap();
+    let mut pixels = String::new();
     for (x, y) in coords {
-        writeln!(writer, "block(x = {x}, y = {y})")?;
+        pixels.push_str(&format!("| (row == {x} & col == {y})"));
     }
+    writeln!(
+        writer,
+        "n = {width}
+width = 10
+gap = 1.5 * width
+
+// Transform function
+fn chessboard(@i) {{
+  row = rem(i, divisor = n)
+  col = floor(i / n)
+  inImageData = false
+  {pixels}
+
+  return [
+    {{
+      translate = [row * gap, col * gap, 0],
+      replicate = inImageData
+    }}
+  ]
+}}
+
+startSketchOn(XY)
+  |> polygon(numSides = 4, radius = width, center = [0, 0])
+  |> extrude(length = 2)
+  |> rotate(yaw = 45)
+  |> patternTransform(instances = n * n, transform = chessboard)
+
+"
+    )?;
     Ok(())
 }
 
