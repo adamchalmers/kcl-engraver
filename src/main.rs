@@ -16,11 +16,11 @@ fn main() {
 fn run() -> anyhow::Result<()> {
     let args = parse_args();
     let input = load_input_image(&args.input)?;
-    let output = engrave(input, args.resolution);
+    let output = engrave(input, args.block_size);
 
     let kcl_output = args.kcl || args.output.ends_with(".kcl");
     if kcl_output {
-        let coords = extract_black_block_coords(&output, args.resolution);
+        let coords = extract_black_block_coords(&output, args.block_size);
         if coords.is_empty() {
             anyhow::bail!("Empty image");
         }
@@ -42,7 +42,7 @@ struct Args {
     output: String,
     /// Block size in pixels (must be >= 1).
     #[arg(short, long, value_name = "N", value_parser = clap::value_parser!(u32).range(1..))]
-    resolution: u32,
+    block_size: u32,
     /// Emit KCL coordinate output even when OUTPUT is '-'.
     #[arg(long)]
     kcl: bool,
@@ -140,16 +140,16 @@ startSketchOn(XY)
     Ok(())
 }
 
-fn extract_black_block_coords(image: &GrayImage, resolution: u32) -> Vec<(u32, u32)> {
+fn extract_black_block_coords(image: &GrayImage, block_size: u32) -> Vec<(u32, u32)> {
     let (width, height) = image.dimensions();
-    let grid_width = width.div_ceil(resolution);
-    let grid_height = height.div_ceil(resolution);
+    let grid_width = width.div_ceil(block_size);
+    let grid_height = height.div_ceil(block_size);
 
     let mut coords = Vec::new();
     for gy in 0..grid_height {
         for gx in 0..grid_width {
-            let x = gx * resolution;
-            let y = gy * resolution;
+            let x = gx * block_size;
+            let y = gy * block_size;
             if image.get_pixel(x, y).0[0] == 0 {
                 coords.push((gx, gy));
             }
@@ -158,20 +158,20 @@ fn extract_black_block_coords(image: &GrayImage, resolution: u32) -> Vec<(u32, u
     coords
 }
 
-fn engrave(input: DynamicImage, resolution: u32) -> GrayImage {
+fn engrave(input: DynamicImage, block_size: u32) -> GrayImage {
     let grayscale = input.to_luma8();
     let (width, height) = grayscale.dimensions();
 
-    let grid_width = width.div_ceil(resolution);
-    let grid_height = height.div_ceil(resolution);
+    let grid_width = width.div_ceil(block_size);
+    let grid_height = height.div_ceil(block_size);
 
     let mut levels = vec![0.0_f32; (grid_width * grid_height) as usize];
     for gy in 0..grid_height {
         for gx in 0..grid_width {
-            let start_x = gx * resolution;
-            let start_y = gy * resolution;
-            let end_x = (start_x + resolution).min(width);
-            let end_y = (start_y + resolution).min(height);
+            let start_x = gx * block_size;
+            let start_y = gy * block_size;
+            let end_x = (start_x + block_size).min(width);
+            let end_y = (start_y + block_size).min(height);
 
             let mut total = 0_u64;
             let mut count = 0_u64;
@@ -237,8 +237,8 @@ fn engrave(input: DynamicImage, resolution: u32) -> GrayImage {
     let mut output = GrayImage::new(width, height);
     for y in 0..height {
         for x in 0..width {
-            let gx = x / resolution;
-            let gy = y / resolution;
+            let gx = x / block_size;
+            let gy = y / block_size;
             let value = bw[(gy * grid_width + gx) as usize];
             output.get_pixel_mut(x, y).0[0] = value;
         }
